@@ -10,6 +10,7 @@ conda activate ChatBattery
 
 pip install pandas
 pip install openai==0.28
+pip install google-generativeai
 pip install Levenshtein
 pip install pymatgen==2024.4.13
 pip install ase
@@ -26,15 +27,34 @@ pip install -e .
 In our case, we download all the chemical formula including Lithium from ICSDN. Then after preprocessing, the file is `data/Li_battery/preprocessed.csv`.
 
 ### 3 Run Scripts
-You need to set up two keys:
-- First set the OpenAI API key, type this in terminal `export OPENAI_API_KEY=xxxxx`.
-- Then is the MP API key, you can change it in the file `ChatBattery/search_agent` and reset `MP_api_key = 'xxx'`.
+You need to set up API keys depending on which model you want to use:
+
+#### For OpenAI models (ChatGPT):
+- Set the OpenAI API key: `export OPENAI_API_KEY=xxxxx`
+
+#### For Google Gemini models:
+- Set the Google API key: `export GOOGLE_API_KEY=xxxxx`
+- Get your API key from: https://ai.google.dev/
+
+#### For Materials Project integration:
+- Set the MP API key in the file `ChatBattery/search_agent` and reset `MP_api_key = 'xxx'`.
 
 #### 3.1 Exploration Phase
 
 For stage 1 to 4, run this CMD in terminal
 ```bash
-python main.py
+# Using OpenAI ChatGPT models
+python main.py --LLM_type=chatgpt_3.5
+
+# Using Google Gemini models
+python main.py --LLM_type=gemini_1.5_flash
+python main.py --LLM_type=gemini_1.5_pro
+python main.py --LLM_type=gemini_1.0_pro
+
+# Other available ChatGPT models
+python main.py --LLM_type=chatgpt_o1
+python main.py --LLM_type=chatgpt_o3
+python main.py --LLM_type=chatgpt_4o
 ```
 
 The default address is `127.0.0.1:5000`. Simply open this address in your browser, and you will see the interface displayed like this:
