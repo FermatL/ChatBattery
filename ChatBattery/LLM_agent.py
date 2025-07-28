@@ -1,6 +1,8 @@
 import sys
 import openai
 import time
+import google.generativeai as genai
+import os
 
 
 def parse(raw_text, history_battery_list):
@@ -49,6 +51,12 @@ class LLM_Agent:
             return LLM_Agent.optimize_batteries_chatgpt(messages, model="o3-mini", temperature=temperature)
         elif LLM_type == 'chatgpt_4o':
             return LLM_Agent.optimize_batteries_chatgpt(messages, model="gpt-4o-mini", temperature=temperature)
+        elif LLM_type == 'gemini_1.5_flash':
+            return LLM_Agent.optimize_batteries_gemini(messages, model="gemini-1.5-flash", temperature=temperature)
+        elif LLM_type == 'gemini_1.5_pro':
+            return LLM_Agent.optimize_batteries_gemini(messages, model="gemini-1.5-pro", temperature=temperature)
+        elif LLM_type == 'gemini_1.0_pro':
+            return LLM_Agent.optimize_batteries_gemini(messages, model="gemini-1.0-pro", temperature=temperature)
         elif LLM_type == "llama2":
             return LLM_Agent.optimize_batteries_open_source(messages, loaded_model=loaded_model, loaded_tokenizer=loaded_tokenizer)
         elif LLM_type == "llama3":
@@ -145,6 +153,76 @@ class LLM_Agent:
                 time.sleep(1)
         return raw_generated_text, generated_battery_list
 
+    @staticmethod
+    def optimize_batteries_gemini(messages, model, temperature):
+        """
+        Optimize batteries using Google Gemini API
+        """
+        received = False
+        history_battery_list = []
+
+        # Configure Gemini API
+        api_key = os.getenv('GOOGLE_API_KEY')
+        if not api_key:
+            raise ValueError("GOOGLE_API_KEY environment variable is not set. Please set it to use Gemini models.")
+        
+        genai.configure(api_key=api_key)
+        
+        # Initialize the model
+        gemini_model = genai.GenerativeModel(model)
+
+        while not received:
+            try:
+                # Convert OpenAI message format to Gemini format
+                # OpenAI: [{"role": "system", "content": "..."}, {"role": "user", "content": "..."}]
+                # Gemini: requires a single prompt string
+                
+                prompt_parts = []
+                for message in messages:
+                    if message["role"] == "system":
+                        prompt_parts.append(f"System: {message['content']}")
+                    elif message["role"] == "user":
+                        prompt_parts.append(f"User: {message['content']}")
+                    elif message["role"] == "assistant":
+                        prompt_parts.append(f"Assistant: {message['content']}")
+                
+                full_prompt = "\n\n".join(prompt_parts)
+                
+                # Generate content with Gemini
+                generation_config = genai.types.GenerationConfig(
+                    temperature=temperature,
+                    max_output_tokens=2048,
+                )
+                
+                response = gemini_model.generate_content(
+                    full_prompt,
+                    generation_config=generation_config
+                )
+                
+                raw_generated_text = response.text
+
+                # ignore batteries that have shown up before
+                generated_battery_list = parse(raw_generated_text, history_battery_list)
+
+                print("===== Parsing messages in the LLM agent (Gemini) =====")
+                print("raw_generated_text", raw_generated_text.replace("\n", "\t"))
+                print("generated_battery_list", generated_battery_list)
+                print("===== Done parsing. =====\n")
+
+                if len(generated_battery_list) == 0:
+                    raw_generated_battery_list = parse(raw_generated_text, [])
+                    print("raw_generated_battery_list", raw_generated_battery_list)
+                    messages[-1]["content"] += "Please do not generate batteries in this list {}.".format(raw_generated_battery_list)
+
+                assert len(generated_battery_list) > 0, "The generated batteries have been discussed in our previous rounds of discussion. Will retry."
+
+                received = True
+                    
+            except Exception as e:
+                print(f"Gemini API error: {e}")
+                time.sleep(1)
+        return raw_generated_text, generated_battery_list
+
 
     @staticmethod
     def rank_batteries(messages, LLM_type, temperature):
@@ -156,6 +234,12 @@ class LLM_Agent:
             return LLM_Agent.rank_batteries_chatgpt(messages, model="o3-mini", temperature=temperature)
         elif LLM_type == 'chatgpt_4o':
             return LLM_Agent.rank_batteries_chatgpt(messages, model="gpt-4o-mini", temperature=temperature)
+        elif LLM_type == 'gemini_1.5_flash':
+            return LLM_Agent.rank_batteries_gemini(messages, model="gemini-1.5-flash", temperature=temperature)
+        elif LLM_type == 'gemini_1.5_pro':
+            return LLM_Agent.rank_batteries_gemini(messages, model="gemini-1.5-pro", temperature=temperature)
+        elif LLM_type == 'gemini_1.0_pro':
+            return LLM_Agent.rank_batteries_gemini(messages, model="gemini-1.0-pro", temperature=temperature)
         else:
             raise NotImplementedError
 
@@ -177,5 +261,47 @@ class LLM_Agent:
                 temperature=temperature,
                 n=None)
         raw_generated_text = response["choices"][0]["message"]['content']
+
+        return raw_generated_text
+
+    @staticmethod
+    def rank_batteries_gemini(messages, model, temperature):
+        """
+        Rank batteries using Google Gemini API
+        """
+        # Configure Gemini API
+        api_key = os.getenv('GOOGLE_API_KEY')
+        if not api_key:
+            raise ValueError("GOOGLE_API_KEY environment variable is not set. Please set it to use Gemini models.")
+        
+        genai.configure(api_key=api_key)
+        
+        # Initialize the model
+        gemini_model = genai.GenerativeModel(model)
+
+        # Convert OpenAI message format to Gemini format
+        prompt_parts = []
+        for message in messages:
+            if message["role"] == "system":
+                prompt_parts.append(f"System: {message['content']}")
+            elif message["role"] == "user":
+                prompt_parts.append(f"User: {message['content']}")
+            elif message["role"] == "assistant":
+                prompt_parts.append(f"Assistant: {message['content']}")
+        
+        full_prompt = "\n\n".join(prompt_parts)
+        
+        # Generate content with Gemini
+        generation_config = genai.types.GenerationConfig(
+            temperature=temperature,
+            max_output_tokens=2048,
+        )
+        
+        response = gemini_model.generate_content(
+            full_prompt,
+            generation_config=generation_config
+        )
+        
+        raw_generated_text = response.text
 
         return raw_generated_text
