@@ -1,7 +1,7 @@
 import sys
 import openai
 import time
-openai.api_key = "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"
+openai.api_key = "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"
 
 def parse(raw_text, history_battery_list):
     record = []
