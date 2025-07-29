@@ -1,0 +1,11 @@
+pandas
+openai==0.28
+Levenshtein
+pymatgen==2024.4.13
+ase
+scikit-learn
+xgboost
+mp-api==0.41.2
+Flask
+setuptools
+requests
