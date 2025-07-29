@@ -57,7 +57,7 @@ def show_content(content, color=default_color):
 
 def load_retrieval_DB(task_index):
     if task_index == 101:
-        DBfile = 'data/Li_battery/preprocessed.csv'
+        DBfile = 'data/Na_battery/preprocessed.csv'
     else:
         raise NotImplementedError
 
@@ -71,7 +71,7 @@ def problem_conceptualization(input_battery, condition, task_index):
     mode = condition[0]
 
     if mode == "initial":
-        task_index_prompt_template = "We have a Li cathode material FORMULA_PLACEHOLDER. Can you optimize it to develop new cathode materials with higher capacity and improved stability? You can introduce new elements from the following groups: carbon group, alkaline earth metals group, and transition elements, excluding radioactive elements; and incorporate new elements directly into the chemical formula, rather than listing them separately; and give the ratio of each element; and adjust the ratio of existing elements. My requirements are proposing five optimized battery formulations, listing them in bullet points (in asterisk *, not - or number or any other symbol), ensuring each formula is chemically valid and realistic for battery applications, and providing reasoning for each modification."
+        task_index_prompt_template = "We have a Na cathode material FORMULA_PLACEHOLDER. Can you optimize it to develop new cathode materials with higher capacity and improved stability? You can introduce new elements from the following groups: carbon group, alkaline earth metals group, and transition elements, excluding radioactive elements; and incorporate new elements directly into the chemical formula, rather than listing them separately; and give the ratio of each element; and adjust the ratio of existing elements. My requirements are proposing five optimized battery formulations, listing them in bullet points (in asterisk *, not - or number or any other symbol), ensuring each formula is chemically valid and realistic for battery applications, and providing reasoning for each modification."
         prompt = task_index_prompt_template.replace('FORMULA_PLACEHOLDER', input_battery)
 
 
@@ -157,7 +157,7 @@ def index():
             response_message = "[ChatBattery]\nStart editing. Please enter the input battery, and press button Step 1.1 to start.\n\n"
             show_content(response_message)
 
-            if args['LLM_type'] in ["chatgpt_3.5"]:
+            if args['LLM_type'] in ["gpt-4.1-mini"]:
                 global_LLM_messages = [{"role": "system", "content": "You are an expert in the field of material and chemistry."}]
             else:
                 global_LLM_messages = []
@@ -388,7 +388,7 @@ def index():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--task_index', required=False, type=int, default=101)
-    parser.add_argument('--LLM_type', required=False, type=str, default='chatgpt_3.5', choices=["chatgpt_3.5", "chatgpt_o1", "chatgpt_o3"], help='only support chatgpt now')
+    parser.add_argument('--LLM_type', required=False, type=str, default='gpt-4.1-mini', choices=["gpt-4.1-mini", "chatgpt_o1", "chatgpt_o3"], help='only support chatgpt now')
     args = parser.parse_args()
     args = vars(args)
 
