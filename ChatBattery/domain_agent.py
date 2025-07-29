@@ -117,22 +117,24 @@ def parse_formula(formula):
 class Domain_Agent:
 
     @staticmethod
-    def distance_function(task_index, formula_01, formula_02):
+    def distance_function(formula_01, formula_02):
         count_01 = parse_formula(formula_01)
         count_02 = parse_formula(formula_02)
 
-        coefficient_01 = 3   # for Li or Na
+        coefficient_01 = 3   # for Na (was Li)
         coefficient_02 = 7   # for Mn, Co, Ni
         coefficient_03 = 5   # for Fe, Cu, Zn, V, Cr, Ti, Mo
         coefficient_04 = 10   # for O, P, F, S, Cl, Br, I
-        coefficient_05 = 5   # for Mg, Al, Si, B, Zr, C, Be, Ca, Na, K, Sn, Sr
+        coefficient_05 = 5   # for Mg, Al, Si, B, Zr, C, Be, Ca, Li, K, Sn, Sr
         coefficient_06 = 1   # for others
 
-        element_level_01_set = set(["Li"])
+        # 更改: Na 现在是主要元素，Li 被移到第5级
+        element_level_01_set = set(["Na"])
         element_level_02_set = set(["Mn", "Co", "Ni"])
         element_level_03_set = set(["Fe", "Cu", "Zn", "V", "Cr", "Ti", "Mo"])
         element_level_04_set = set(["O", "P", "F", "S", "Cl", "Br", "I"])
-        element_level_05_set = set(["Mg", "Al", "Si", "B", "Zr", "C", "Be", "Ca", "Na", "K", "Sn", "Sr"])
+        # 更改: 从此集合中移除 'Na' 并添加 'Li'
+        element_level_05_set = set(["Mg", "Al", "Si", "B", "Zr", "C", "Be", "Ca", "Li", "K", "Sn", "Sr"])
         element_level_06_set = set(list(atomic_weights.keys())) - element_level_01_set - element_level_02_set - element_level_03_set - element_level_04_set - element_level_05_set
         
         distance = 0
@@ -201,17 +203,17 @@ class Domain_Agent:
     def calculate_molecular_weight(elements_count):
         weight = 0
         for element, count in elements_count.items():
-            weight += atomic_weights[element] * count
+            weight += atomic_weights.get(element, 0) * count
         return weight
 
     @staticmethod
-    def calculate_theoretical_capacity(formula, task_id):
+    def calculate_theoretical_capacity(formula):
+        # 更改: 移除 task_id 并将计算硬编码为钠 (Na)
         elements_count = parse_formula(formula)
-        if task_id == 101:
-            target_element_count = elements_count['Li']
-        elif task_id == 102:
-            target_element_count = elements_count['Na']
+        target_element_count = elements_count.get('Na', 0)
         molecular_weight = Domain_Agent.calculate_molecular_weight(elements_count)
+        if molecular_weight == 0:
+            return 0
         theoretical_capacity = 96500 * target_element_count * (1 / molecular_weight) * (1 / 3.6)
         return theoretical_capacity
 
@@ -231,98 +233,22 @@ class Domain_Agent:
 
 # https://eels.info/atlas
 atomic_weights = {
-    'H': 1.008,
-    'He': 4.0026,
-    'Li': 6.94,
-    'Be': 9.0122,
-    'B': 10.81,
-    'C': 12.01,
-    'N': 14.01,
-    'O': 16.00,
-    'F': 19.00,
-    'Ne': 20.18,
-    'Na': 22.99,
-    'Mg': 24.305,
-    'Al': 26.98,
-    'Si': 28.085,
-    'P': 30.974,
-    'S': 32.06,
-    'Cl': 35.45,
-    'K': 39.10,
-    'Ar': 39.95,
-    'Ca': 40.08,
-    'Sc': 44.96,
-    'Ti': 47.867,
-    'V': 50.94,
-    'Cr': 52.00,
-    'Mn': 54.94,
-    'Fe': 55.845,
-    'Co': 58.93,
-    'Ni': 58.693,
-    'Cu': 63.546,
-    'Zn': 65.38,
-    'Ga': 69.723,
-    'Ge': 72.63,
-    'As': 74.922,
-    'Se': 78.96,
-    'Br': 79.904,
-    'Kr': 83.798,
-    'Rb': 85.468,
-    'Sr': 87.62,
-    'Y': 88.906,
-    'Zr': 91.224,
-    'Nb': 92.906,
-    'Mo': 95.95,
-    'Tc': 98.00,
-    'Ru': 101.07,
-    'Rh': 102.91,
-    'Pd': 106.42,
-    'Ag': 107.87,
-    'Cd': 112.41,
-    'In': 114.82,
-    'Sn': 118.71,
-    'Sb': 121.76,
-    'Te': 127.60,
-    'I': 126.90,
-    'Xe': 131.29,
-    'Cs': 132.91,
-    'Ba': 137.33,
-    'Ra': 226,
-    'Fl': 289,
-    'La': 138.91,
-    'Ce': 140.12,
-    'Pr': 140.91,
-    'Nd': 144.24,
-    'Pm': 145.00,
-    'Sm': 150.36,
-    'Eu': 151.96,
-    'Gd': 157.25,
-    'Tb': 158.93,
-    'Dy': 162.50,
-    'Ho': 164.93,
-    'Er': 167.26,
-    'Tm': 168.93,
-    'Yb': 173.05,
-    'Lu': 174.97,
-    'Hf': 178.49,
-    'Ta': 180.95,
-    'W': 183.84,
-    'Re': 186.21,
-    'Os': 190.23,
-    'Ir': 192.22,
-    'Pt': 195.08,
-    'Au': 196.97,
-    'Hg': 200.59,
-    'Tl': 204.38,
-    'Pb': 207.2,
-    'Bi': 208.98,
-    'Th': 232.04,
-    'Pa': 231.04,
-    'U': 238.03,
-    'Pu': 244.06,
-    'Np': 237.05,
-    'Po': 209.00,
-    'At': 210.00,
+    'H': 1.008, 'He': 4.0026, 'Li': 6.94, 'Be': 9.0122, 'B': 10.81, 'C': 12.01,
+    'N': 14.01, 'O': 16.00, 'F': 19.00, 'Ne': 20.18, 'Na': 22.99, 'Mg': 24.305,
+    'Al': 26.98, 'Si': 28.085, 'P': 30.974, 'S': 32.06, 'Cl': 35.45, 'K': 39.10,
+    'Ar': 39.95, 'Ca': 40.08, 'Sc': 44.96, 'Ti': 47.867, 'V': 50.94, 'Cr': 52.00,
+    'Mn': 54.94, 'Fe': 55.845, 'Co': 58.93, 'Ni': 58.693, 'Cu': 63.546, 'Zn': 65.38,
+    'Ga': 69.723, 'Ge': 72.63, 'As': 74.922, 'Se': 78.96, 'Br': 79.904, 'Kr': 83.798,
+    'Rb': 85.468, 'Sr': 87.62, 'Y': 88.906, 'Zr': 91.224, 'Nb': 92.906, 'Mo': 95.95,
+    'Tc': 98.00, 'Ru': 101.07, 'Rh': 102.91, 'Pd': 106.42, 'Ag': 107.87, 'Cd': 112.41,
+    'In': 114.82, 'Sn': 118.71, 'Sb': 121.76, 'Te': 127.60, 'I': 126.90, 'Xe': 131.29,
+    'Cs': 132.91, 'Ba': 137.33, 'Ra': 226, 'Fl': 289, 'La': 138.91, 'Ce': 140.12,
+    'Pr': 140.91, 'Nd': 144.24, 'Pm': 145.00, 'Sm': 150.36, 'Eu': 151.96, 'Gd': 157.25,
+    'Tb': 158.93, 'Dy': 162.50, 'Ho': 164.93, 'Er': 167.26, 'Tm': 168.93, 'Yb': 173.05,
+    'Lu': 174.97, 'Hf': 178.49, 'Ta': 180.95, 'W': 183.84, 'Re': 186.21, 'Os': 190.23,
+    'Ir': 192.22, 'Pt': 195.08, 'Au': 196.97, 'Hg': 200.59, 'Tl': 204.38, 'Pb': 207.2,
+    'Bi': 208.98, 'Th': 232.04, 'Pa': 231.04, 'U': 238.03, 'Pu': 244.06, 'Np': 237.05,
+    'Po': 209.00, 'At': 210.00,
 }
 
 
