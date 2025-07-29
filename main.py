@@ -31,7 +31,7 @@ RETRIEVAL_AGENT_COLOR = "#B5C5DE"
 def load_retrieval_DB():
     """Loads the retrieval database from a CSV file."""
     try:
-        DBfile = 'data/Na_battery/preprocessed.csv'
+        DBfile = 'data/preprocessed.csv'
         db = pd.read_csv(DBfile)
         return db[['formula']]
     except FileNotFoundError:
