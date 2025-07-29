@@ -1,395 +1,328 @@
-import json
-import argparse
-import sys
-import re
+import streamlit as st
 import pandas as pd
+import re
 from collections import defaultdict
+
+# 假设这些是你自己的模块，并且在同一目录下
+# 如果这些模块不存在，你需要创建它们或注释掉相关代码
 from ChatBattery.LLM_agent import LLM_Agent
 from ChatBattery.domain_agent import Domain_Agent
 from ChatBattery.search_agent import Search_Agent
 from ChatBattery.decision_agent import Decision_Agent
 from ChatBattery.retrieval_agent import Retrieval_Agent
 
-from flask import Flask, render_template, request
+# --- 初始设置和状态管理 ---
 
-app = Flask(__name__, template_folder="templates")
+# 定义颜色常量
+DEFAULT_COLOR = "black"
+HUMAN_AGENT_COLOR = "#9A8EAF"
+LLM_AGENT_COLOR = "#AC7572"
+DOMAIN_AGENT_COLOR = "#DAB989"
+SEARCH_AGENT_COLOR = "#8BA297"
+DECISION_AGENT_COLOR = "#788BAA"
+RETRIEVAL_AGENT_COLOR = "#B5C5DE"
 
-global_already_started = False
+# 初始化会话状态 (Session State)
+# Streamlit 在每次交互后会重新运行脚本，st.session_state 用于在多次运行之间保存变量
+def initialize_state():
+    """初始化所有需要的 session_state 变量。"""
+    st.session_state.setdefault('initialized', True)
+    st.session_state.setdefault('conversation_list', [])
+    st.session_state.setdefault('LLM_messages', [])
+    st.session_state.setdefault('condition_list', [])
+    st.session_state.setdefault('input_battery_list', [])
+    st.session_state.setdefault('generated_text_list', [])
+    st.session_state.setdefault('generated_battery_list', [])
+    st.session_state.setdefault('optimal_generated_battery_list', [])
+    st.session_state.setdefault('battery_record', defaultdict(str))
+    st.session_state.setdefault('retrieved_battery_record', defaultdict(str))
+    st.session_state.setdefault('already_started', False)
+    st.session_state.setdefault('text_area_content', "请点击 '开始新会话' 按钮来启动。")
 
-global_conversation_list = []
+# 首次运行时初始化
+if 'initialized' not in st.session_state:
+    initialize_state()
 
-global_LLM_messages = []
-global_condition_list = []
-global_input_battery_list = []
-global_generated_text_list = []
-global_generated_battery_list = []
-global_optimal_generated_battery_list = []
-global_battery_record = defaultdict(str)
-global_retrieved_battery_record = defaultdict(str)
+# --- 辅助函数 ---
 
-
-default_color           = "black"
-human_agent_color       = "#9A8EAF"
-LLM_agent_color         = "#AC7572"
-domain_agent_color      = "#DAB989"
-search_agent_color      = "#8BA297"
-decision_agent_color    = "#788BAA"
-retrieval_agent_color   = "#B5C5DE"
-
-
-def show_content(content, color=default_color):
+def show_content(content, color=DEFAULT_COLOR):
+    """根据内容前缀设置颜色并添加到对话列表中。"""
     if content.startswith("[Human Agent]"):
-        color = human_agent_color
+        color = HUMAN_AGENT_COLOR
     elif content.startswith("[LLM Agent]"):
-        color = LLM_agent_color
+        color = LLM_AGENT_COLOR
     elif content.startswith("[Domain Agent]"):
-        color = domain_agent_color
+        color = DOMAIN_AGENT_COLOR
     elif content.startswith("[Search Agent]"):
-        color = search_agent_color
+        color = SEARCH_AGENT_COLOR
     elif content.startswith("[Decision Agent]"):
-        color = decision_agent_color
+        color = DECISION_AGENT_COLOR
     elif content.startswith("[Retrieval Agent]"):
-        color = retrieval_agent_color
-    global_conversation_list.append({"color": color, "text": content.replace("\n", "<br>")})
-    print("global_conversation_list", global_conversation_list)
-    return
+        color = RETRIEVAL_AGENT_COLOR
+    
+    # 将换行符转换为 HTML 的 <br> 以便正确显示
+    st.session_state.conversation_list.append({"color": color, "text": content.replace("\n", "<br>")})
 
-
+@st.cache_data
 def load_retrieval_DB():
-    # 直接指定钠离子电池数据库文件路径
-    # 请确保该路径正确
-    DBfile = 'data/Na_battery/preprocessed.csv'
-
-    DB = pd.read_csv(DBfile)
-    DB = DB[['formula']]
-
-    return DB
-
+    """
+    加载钠离子电池数据库。
+    @st.cache_data 装饰器会缓存数据，避免每次交互都重新加载。
+    """
+    try:
+        DBfile = 'data/preprocessed.csv'
+        DB = pd.read_csv(DBfile)
+        DB = DB[['formula']]
+        return DB
+    except FileNotFoundError:
+        st.error(f"错误：数据库文件未找到于 '{DBfile}'。请确保文件路径正确。")
+        return pd.DataFrame({'formula': []})
 
 def problem_conceptualization(input_battery, condition):
+    """根据当前条件生成任务提示（Prompt）。"""
     mode = condition[0]
 
     if mode == "initial":
         task_index_prompt_template = "We have a Na cathode material FORMULA_PLACEHOLDER. Can you optimize it to develop new cathode materials with higher capacity and improved stability? You can introduce new elements from the following groups: carbon group, alkaline earth metals group, and transition elements, excluding radioactive elements; and incorporate new elements directly into the chemical formula, rather than listing them separately; and give the ratio of each element; and adjust the ratio of existing elements. My requirements are proposing five optimized battery formulations, listing them in bullet points (in asterisk *, not - or number or any other symbol), ensuring each formula is chemically valid and realistic for battery applications, and providing reasoning for each modification."
         prompt = task_index_prompt_template.replace('FORMULA_PLACEHOLDER', input_battery)
 
-
     elif mode == "update_with_generated_battery_list":
-        generated_battery_list = condition[1] # [ battery 1, battery 2, battery 3, ...]
+        generated_battery_list = condition[1]
         prompt = "You generated some existing or invalid battery compositions that need to be replaced with valid ones (one for each).\n"
-
-        not_novel_list, invalid_list, valid_list = [], [], []
-        for generated_battery in generated_battery_list:
-            if global_battery_record[generated_battery] == "not novel":
-                not_novel_list.append(generated_battery)
-            elif global_battery_record[generated_battery] == "invalid":
-                invalid_list.append(generated_battery)
-            else:
-                valid_list.append(generated_battery)
         
-        if len(not_novel_list) > 0:
-            not_novel_list = ["* {}".format(x) for x in not_novel_list]
-            prompt += "These batteries have been discovered before:\n" + "\n".join(not_novel_list)
-            prompt += "\n"
+        not_novel_list, invalid_list, valid_list = [], [], []
+        for gen_battery in generated_battery_list:
+            if st.session_state.battery_record[gen_battery] == "not novel":
+                not_novel_list.append(gen_battery)
+            elif st.session_state.battery_record[gen_battery] == "invalid":
+                invalid_list.append(gen_battery)
+            else:
+                valid_list.append(gen_battery)
 
-        if len(invalid_list) > 0:
+        if not_novel_list:
+            prompt += "These batteries have been discovered before:\n" + "\n".join([f"* {x}" for x in not_novel_list]) + "\n\n"
+        
+        if invalid_list:
             prompt_list = []
-            for invalid_battery in invalid_list:
-                retrieved_battery = global_retrieved_battery_record[invalid_battery]
-                if retrieved_battery is not None:
-                    prompt_list.append(f"* {invalid_battery} (a retrieved similar and correct battery is {retrieved_battery})\n")
+            for inv_battery in invalid_list:
+                retrieved = st.session_state.retrieved_battery_record.get(inv_battery)
+                if retrieved:
+                    prompt_list.append(f"* {inv_battery} (a retrieved similar and correct battery is {retrieved})")
                 else:
-                    prompt_list.append(f"* {invalid_battery}\n")
-            prompt += "These invalid batteries are:\n" + "".join(prompt_list)
-
+                    prompt_list.append(f"* {inv_battery}")
+            prompt += "These invalid batteries are:\n" + "\n".join(prompt_list) + "\n\n"
+            
         prompt += "When replacing the invalid or existing compositions, you can replace the newly added elements with elements of lower atomic mass; and adjust the ratio of existing elements; and introduce new elements. The new compositions must be stable and have a higher capacity. The final outputs should include newly generated valid compositions, skip the retrieved batteries, and be listed in bullet points (in asterisk *, not - or number or any other symbol)."
-
-
     else:
-        raise ValueError("Mode should be in [initial, reasoning, not novel, not correct, update_with_generated_battery_list].")
-
+        raise ValueError("Mode should be in [initial, update_with_generated_battery_list].")
+        
     return prompt
 
+# --- Streamlit UI 界面 ---
 
-@app.route("/", methods=["GET", "POST"])
-def index():
-    render_in_textarea = False
-    default_textarea = "No need to enter prompt."
+st.title("🔋 ChatBattery 交互式应用")
+
+# 加载数据
+retrieval_DB = load_retrieval_DB()
+
+# --- 侧边栏控制器 ---
+st.sidebar.title("控制面板")
+
+# LLM 类型选择
+llm_type = st.sidebar.selectbox(
+    "选择 LLM 模型",
+    ["gpt-4.1-mini", "chatgpt_o1", "chatgpt_o3"],
+    key='llm_type_selector'
+)
+
+# 步骤按钮
+if st.sidebar.button("▶️ 开始新会话 (Step 0)"):
+    if st.session_state.already_started:
+        show_content("<br><hr><br>")
     
-    if request.method == "POST":
-        print("request.form", request.form)
+    # 重置所有状态
+    for key in st.session_state.keys():
+        del st.session_state[key]
+    initialize_state()
 
-        print("===== messages =====")
-        global global_LLM_messages
-        for message in global_LLM_messages:
-            print(message)
-        print()
+    show_content("=====" * 10)
+    show_content("[ChatBattery]\n会话已重置。请输入初始电池材料，然后点击 Step 1.1。")
+    st.session_state.already_started = True
+    st.session_state.condition_list.append(("initial",))
+    if llm_type in ["gpt-4.1-mini"]:
+         st.session_state.LLM_messages = [{"role": "system", "content": "You are an expert in the field of material and chemistry."}]
+    
+    st.session_state.text_area_content = "在此输入你的初始电池材料 (例如: Na3V2(PO4)3)。"
+    st.rerun()
+
+st.sidebar.markdown("---")
+
+if st.sidebar.button("Step 1.1: 问题概念化"):
+    show_content("========== Step 1. 问题概念化 ==========")
+    condition = st.session_state.condition_list[-1]
+    
+    if condition[0] == "initial":
+        input_battery = st.session_state.text_area_content.strip()
+        st.session_state.input_battery_list.append(input_battery)
+    else:
+        input_battery = st.session_state.input_battery_list[-1]
+        valid_list = [b for b in condition[1] if st.session_state.battery_record[b] == "valid"]
+        if valid_list:
+            content = "[ChatBattery]\n上一轮的有效电池:\n" + "\n".join([f"* {x}" for x in valid_list])
+            show_content(content)
+    
+    prompt = problem_conceptualization(input_battery, condition)
+    show_content(f"[Human Agent]\n{prompt}\n\n")
+    st.session_state.text_area_content = prompt
+    st.rerun()
+
+if st.sidebar.button("Step 1.2: 确认/编辑 Prompt"):
+    prompt = st.session_state.text_area_content.strip()
+    show_content(f"[Human Agent] (已确认)\n{prompt}\n\n")
+    st.session_state.text_area_content = prompt + "\n\nNext double-check or move to Step 2.1."
+    st.rerun()
+
+st.sidebar.markdown("---")
+
+if st.sidebar.button("Step 2.1: 生成假设"):
+    show_content("========== Step 2. 生成假设 ==========")
+    prompt = st.session_state.text_area_content.replace("Next double-check or move to Step 2.1.", "").strip()
+    st.session_state.LLM_messages.append({"role": "user", "content": prompt})
+
+    previous_valid_list = []
+    if st.session_state.generated_battery_list:
+        last_gen_list = st.session_state.generated_battery_list[-1]
+        previous_valid_list = [b for b in last_gen_list if st.session_state.battery_record[b] == "valid"]
+
+    # 调用 LLM Agent (确保 Agent 代码可用)
+    generated_text, generated_battery_list = LLM_Agent.optimize_batteries(st.session_state.LLM_messages, llm_type)
+    st.session_state.LLM_messages.append({"role": "assistant", "content": generated_text})
+    
+    current_generated_list = generated_battery_list + previous_valid_list
+    st.session_state.generated_battery_list.append(current_generated_list)
+    
+    show_content(f"[LLM Agent]\n{generated_text}\n\n")
+    st.session_state.text_area_content = "Next move to Step 2.2."
+    st.rerun()
+
+if st.sidebar.button("Step 2.2: 提取配方"):
+    gen_list = st.session_state.generated_battery_list[-1]
+    content = "[ChatBattery]\n请确认以下从 LLM 回复中提取的配方是否正确。"
+    text_area_content = content
+    for battery in gen_list:
+        content += f"\n* {battery}"
+        text_area_content += f"\n* {battery}"
+    show_content(content + "\n\n")
+    st.session_state.text_area_content = text_area_content
+    st.rerun()
+
+if st.sidebar.button("Step 2.3: 确认配方"):
+    confirmed_text = st.session_state.text_area_content
+    new_gen_list = []
+    
+    content = "[ChatBattery] (已确认)\n从LLM回复中提取的配方:"
+    for line in confirmed_text.split('\n'):
+        if line.startswith('*'):
+            battery = line.replace('*', '').strip()
+            if battery:
+                new_gen_list.append(battery)
+                content += f"\n* {battery}"
+    
+    show_content(content + "\n\n")
+    st.session_state.generated_battery_list[-1] = new_gen_list
+    st.session_state.text_area_content = content.replace("[ChatBattery] (已确认)", "Confirmed:") + "\n\nNext double-check or move to Step 3.1."
+    st.rerun()
+
+st.sidebar.markdown("---")
+
+if st.sidebar.button("Step 3.1: 验证假设可行性 (DB Search)"):
+    show_content("========== Step 3. 验证假设可行性 ==========")
+    content = "[Search Agent]"
+    gen_list = st.session_state.generated_battery_list[-1]
+    
+    for battery in gen_list:
+        st.session_state.battery_record[battery] = "novel"
+        content += f"\n\n********** 正在搜索 {battery} **********\n"
         
-        if "button0" in request.form:
-            global_LLM_messages = []
-            global global_condition_list
-            global_condition_list = []
-            global global_input_battery_list
-            global_input_battery_list = []
-            global global_generated_text_list
-            global_generated_text_list = []
-            global global_generated_battery_list
-            global_generated_battery_list = []
-            global global_optimal_generated_battery_list
-            global_optimal_generated_battery_list = []
-            global global_battery_record
-            global_battery_record = defaultdict(str)
-            global global_retrieved_battery_record
-            global_retrieved_battery_record = defaultdict(str)
-
-            condition = ("initial",)
-            global_condition_list.append(condition)
-
-            global global_already_started
-            color = "black"
-            
-            print("global_already_started", global_already_started)
-            if global_already_started:
-                show_content("<br><br><br>")
-
-            show_content("=====" * 10)
-            response_message = "[ChatBattery]\nStart editing. Please enter the input battery, and press button Step 1.1 to start.\n\n"
-            show_content(response_message)
-
-            if args['LLM_type'] in ["gpt-4.1-mini"]:
-                global_LLM_messages = [{"role": "system", "content": "You are an expert in the field of material and chemistry."}]
-            else:
-                global_LLM_messages = []
-
-            default_textarea = "Please enter in your input battery."
-            
-            global_already_started = True
-
-
-
-        elif "button1.1" in request.form:
-            color = "#B7B2D0"
-            show_content("========== Step 1. Problem Conceptualization ==========")
-            color = "black"
-
-            condition = global_condition_list[-1]
-            if condition[0] == "initial":  # only add input_battery at the initial step
-                input_battery = request.form.get("content_input").strip()
-                global_input_battery_list.append(input_battery)
-            else:
-                input_battery = global_input_battery_list[-1]
-                generated_battery_list = condition[1]
-                valid_list = [x for x in generated_battery_list if global_battery_record[x] == "valid"]
-                        
-                if len(valid_list) > 0:
-                    valid_list = ["* {}".format(x) for x in valid_list]
-                    content = "[ChatBattery]\nThese are the valid batteries from previous round:\n" + "\n".join(valid_list)
-                    content += "\n\n"
-                    show_content(content)
-
-            prompt = problem_conceptualization(condition=condition, input_battery=input_battery)
-            content = "[Human Agent]\n{}\n\n".format(prompt)
-            show_content(content)
-
-            render_in_textarea = True
-            default_textarea = prompt
-
-
-
-        elif "button1.2" in request.form:
-            next_step_instruction = "Next double-check or move to Step 2.1."
-
-            prompt = request.form.get("content_input").replace(next_step_instruction, "").strip()
-            content = "[Human Agent]\n{}\n\n".format(prompt)
-            show_content(content)
-
-            render_in_textarea = True
-            default_textarea = prompt
-            default_textarea = default_textarea + "\n\n" + next_step_instruction
-
-
-        elif "button2.1" in request.form:
-            show_content("========== Step 2. Hypothesis Generation ==========")
-
-            content = request.form.get("content_input").strip()
-            global_LLM_messages.append({"role": "user", "content": content})
-
-
-            # NOTE: valid from previous round
-            if len(global_generated_battery_list) > 0:
-                generated_battery_list = global_generated_battery_list[-1]
-                previous_valid_battery_list = [x for x in generated_battery_list if global_battery_record[x] == "valid"]
-            else:
-                previous_valid_battery_list = []
-            
-            # NOTE: valid from this round
-            generated_text, generated_battery_list = LLM_Agent.optimize_batteries(global_LLM_messages, args['LLM_type'])
-            global_LLM_messages.append({"role": "assistant", "content": generated_text})
-
-            current_generated_battery_list = generated_battery_list
-            if len(previous_valid_battery_list) > 0:
-                current_generated_battery_list.extend([""] + previous_valid_battery_list)
-            global_generated_battery_list.append(current_generated_battery_list)
-
-            content = "[LLM Agent]\n{}\n\n".format(generated_text)
-            show_content(content)
-
-            default_textarea = "Next move to Step 2.2."
-
-
-        elif "button2.2" in request.form:
-            input_battery = global_input_battery_list[-1]
-            generated_battery_list = global_generated_battery_list[-1]
-
-            content = "[ChatBattery]\nPlease confirm if the following formula matches with the LLM (current and last rounds) replies."
-            textarea_content = "Please confirm if the following formula matches with the LLM (current and last) replies."
-            for idx, battery in enumerate(generated_battery_list):
-                content = "{}\n* {}".format(content, battery)
-                textarea_content = "{}\n* {}".format(textarea_content, battery)
-            show_content(content + "\n\n")
-            
-            render_in_textarea = True
-            default_textarea = textarea_content + "\n"
-
-
-
-        elif "button2.3" in request.form:
-            next_step_instruction = "Next double-check or move to Step 3.1."
-            generated_battery_list = []
-
-
-            textarea_content = "Confirmed: the following formula matches with the LLM (current and last) replies."
-            previous_content = request.form.get("content_input").strip()
-            content = "[ChatBattery]\nPlease confirm if the following formula matches with the LLM (current and last rounds) replies."
-            for line in previous_content.split("\n"):
-                if line.startswith("*"):
-                    battery = line.replace("*", "").strip()
-                    if len(battery) == 0:
-                        continue
-                    textarea_content = "{}\n* {}".format(textarea_content, battery)
-                    content = "{}\n* {}".format(content, battery)
-                    generated_battery_list.append(battery)
-            show_content(content + "\n\n")
-            
-            render_in_textarea = True
-            default_textarea = textarea_content
-            default_textarea = default_textarea + "\n\n" + next_step_instruction
-
-            global_generated_battery_list[-1] = generated_battery_list
-
-
-
-
-        elif "button3.1" in request.form:
-            show_content("========== Step 3. Hypothesis Feasibility Validation ==========")
-
-            content = "[Search Agent]"
-            generated_battery_list = global_generated_battery_list[-1]
-
-            for generated_battery in generated_battery_list:
-                global_battery_record[generated_battery] = "novel"
-
-                content += "\n********** searching {} in DB **********\n".format(generated_battery)
-
-                generated_battery_exist_ICSD = Search_Agent.ICSD_search(generated_battery, retrieval_DB["formula"].tolist())  # retrieval DB is ICSD DB
-                if generated_battery_exist_ICSD:
-                    global_battery_record[generated_battery] = "not novel"
-                    content += "exists in ICSD database\n"
-                else:
-                    content += "does not exist in ICSD database\n"
-
-                generated_battery_exist_MP = Search_Agent.MP_search(generated_battery)
-                if generated_battery_exist_MP:
-                    global_battery_record[generated_battery] = "not novel"
-                    content += "exists in MP database"
-                else:
-                    content += "does not exist in MP database"
-            
-            show_content(content + "\n\n")
-            default_textarea = default_textarea + "\nNext move to Step 4.1."
-
-
-
-        elif "button4.1" in request.form:
-            show_content("========== Step 4. Hypothesis Testing ==========")
-
-            input_battery = global_input_battery_list[-1]
-            generated_battery_list = global_generated_battery_list[-1]
-
-            input_value = Domain_Agent.calculate_theoretical_capacity(input_battery)
-            content = "[Domain Agent] Input battery is {} with capacity {:.3f}".format(input_battery, input_value)
-            show_content(content)
-
-            content = "[Decision Agent]"
-            show_content(content)
-
-            answer_list = Decision_Agent.decide_pairs(input_battery, generated_battery_list)
-            for generated_battery, output_value, answer in answer_list:
-                if global_battery_record[generated_battery] == "not novel":
-                    content = "* Candidate optimized battery {} is not novel".format(generated_battery)
-                else:
-                    content = "* Candidate optimized battery {} is novel".format(generated_battery)
-
-                if answer:
-                    content += " and valid, <span style=\"color:{}\">with capacity {:.3f}</span>\n".format(domain_agent_color, output_value)
-                else:
-                    content += " and invalid, <span style=\"color:{}\">with capacity {:.3f}</span>\n".format(domain_agent_color, output_value)
-
-                show_content(content, color=decision_agent_color)
-
-                if global_battery_record[generated_battery] == "novel":
-                    if answer:
-                        global_battery_record[generated_battery] = "valid"
-
-                    else:
-                        global_battery_record[generated_battery] = "invalid"
-
-                        try:
-                            retrieved_battery, retrieved_capacity = Retrieval_Agent.retrieve_with_domain_feedback(retrieval_DB, input_battery, generated_battery)
-                            retrieved_content = "[Retrieval Agent] Retrieved battery {} <span style=\"color:{}\">with capacity {:.3f}</span> is the most similar to the candidate optimized battery and serves as a valid optimization to the input battery.".format(
-                                retrieved_battery, domain_agent_color, retrieved_capacity)
-                        except:
-                            retrieved_battery = None
-                            retrieved_content = "[Retrieval Agent] No valid battery is retrieved."
-                        
-                        global_retrieved_battery_record[generated_battery] = retrieved_battery
-                        show_content(retrieved_content)
-
-
-            all_pass = True
-            for generated_battery in generated_battery_list:
-                if global_battery_record[generated_battery] == "valid":
-                    continue
-                else:
-                    all_pass = False
-                
-            if all_pass:
-                default_textarea = "Answer found! Please move to Step 5.1."
-            else:
-                condition = ("update_with_generated_battery_list", generated_battery_list)
-                global_condition_list.append(condition)
-                default_textarea = "Answers not correct. Please go back to Step 1.1."
-            
-            show_content("\n\n")
-
-
+        # ICSD Search
+        exist_icsd = Search_Agent.ICSD_search(battery, retrieval_DB["formula"].tolist())
+        if exist_icsd:
+            st.session_state.battery_record[battery] = "not novel"
+            content += "存在于 ICSD 数据库中\n"
         else:
-            response_message = "Please enter your next input battery for editing:"
+            content += "不存在于 ICSD 数据库中\n"
+        
+        # MP Search
+        exist_mp = Search_Agent.MP_search(battery)
+        if exist_mp:
+            st.session_state.battery_record[battery] = "not novel"
+            content += "存在于 MP 数据库中"
+        else:
+            content += "不存在于 MP 数据库中"
+            
+    show_content(content + "\n\n")
+    st.session_state.text_area_content = "Next move to Step 4.1."
+    st.rerun()
 
-    return render_template(
-        "index.html",
-        content_list=global_conversation_list,
-        render_in_textarea=render_in_textarea,
-        default_textarea=default_textarea,
-    )
+st.sidebar.markdown("---")
 
+if st.sidebar.button("Step 4.1: 假设测试 (Domain Knowledge)"):
+    show_content("========== Step 4. 假设测试 ==========")
+    input_battery = st.session_state.input_battery_list[-1]
+    gen_list = st.session_state.generated_battery_list[-1]
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--LLM_type', required=False, type=str, default='gpt-4.1-mini', choices=["gpt-4.1-mini", "chatgpt_o1", "chatgpt_o3"], help='only support chatgpt now')
-    args = parser.parse_args()
-    args = vars(args)
+    input_value = Domain_Agent.calculate_theoretical_capacity(input_battery)
+    show_content(f"[Domain Agent] 输入电池 {input_battery} 的理论容量为 {input_value:.3f}")
+    
+    show_content("[Decision Agent]")
+    answer_list = Decision_Agent.decide_pairs(input_battery, gen_list)
+    
+    for gen_battery, output_value, is_valid in answer_list:
+        novelty_status = "novel" if st.session_state.battery_record[gen_battery] != "not novel" else "not novel"
+        validity_status = "valid" if is_valid else "invalid"
+        
+        show_content(
+            f"* 候选电池 {gen_battery} 是 **{novelty_status}** 且 **{validity_status}**, "
+            f"<span style='color:{DOMAIN_AGENT_COLOR}'>容量为 {output_value:.3f}</span>",
+            color=DECISION_AGENT_COLOR
+        )
+        
+        if novelty_status == "novel":
+            st.session_state.battery_record[gen_battery] = validity_status
+            if not is_valid:
+                try:
+                    retrieved_battery, retrieved_capacity = Retrieval_Agent.retrieve_with_domain_feedback(retrieval_DB, input_battery, gen_battery)
+                    retrieved_content = (f"[Retrieval Agent] 检索到最相似的有效电池: {retrieved_battery} "
+                                         f"<span style='color:{DOMAIN_AGENT_COLOR}'>容量为 {retrieved_capacity:.3f}</span>")
+                    st.session_state.retrieved_battery_record[gen_battery] = retrieved_battery
+                except Exception:
+                    retrieved_content = "[Retrieval Agent] 未检索到相似的有效电池。"
+                show_content(retrieved_content)
 
-    retrieval_DB = load_retrieval_DB()
+    all_pass = all(st.session_state.battery_record[b] == "valid" for b in gen_list)
+    
+    if all_pass:
+        st.session_state.text_area_content = "任务完成！所有生成的电池均有效。"
+        st.balloons()
+    else:
+        condition = ("update_with_generated_battery_list", gen_list)
+        st.session_state.condition_list.append(condition)
+        st.session_state.text_area_content = "部分电池无效或已存在。请返回 Step 1.1 进行迭代优化。"
+    
+    st.rerun()
 
-    app.run(debug=True)
+st.sidebar.markdown("---")
+
+# --- 主显示区域 ---
+
+st.header("对话历史")
+# 显示对话内容
+for item in st.session_state.conversation_list:
+    st.markdown(f'<p style="color:{item["color"]};">{item["text"]}</p>', unsafe_allow_html=True)
+
+st.header("输入/确认区域")
+st.text_area(
+    "根据提示在此处输入或确认内容",
+    key='text_area_content',
+    height=250
+)
