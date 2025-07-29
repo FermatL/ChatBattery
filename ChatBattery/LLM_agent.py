@@ -1,7 +1,7 @@
 import sys
 import openai
 import time
-
+openai.api_key = "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"
 
 def parse(raw_text, history_battery_list):
     record = []
@@ -41,8 +41,8 @@ class LLM_Agent:
             print("content: {}".format(content))
         print("===== Done checking. =====\n")
 
-        if LLM_type == 'chatgpt_3.5':
-            return LLM_Agent.optimize_batteries_chatgpt(messages, model="gpt-3.5-turbo", temperature=temperature)
+        if LLM_type == 'gpt-4.1-mini':
+            return LLM_Agent.optimize_batteries_chatgpt(messages, model="gpt-4.1-mini", temperature=temperature)
         elif LLM_type == 'chatgpt_o1':
             return LLM_Agent.optimize_batteries_chatgpt(messages, model="o1-mini", temperature=temperature)
         elif LLM_type == 'chatgpt_o3':
@@ -66,7 +66,7 @@ class LLM_Agent:
 
         while not received:
             try:
-                if model == "chatgpt_3.5":
+                if model == "gpt-4.1-mini":
                     response = openai.ChatCompletion.create(
                         model=model,
                         messages=messages,
@@ -148,8 +148,8 @@ class LLM_Agent:
 
     @staticmethod
     def rank_batteries(messages, LLM_type, temperature):
-        if LLM_type == 'chatgpt_3.5':
-            return LLM_Agent.rank_batteries_chatgpt(messages, model="gpt-3.5-turbo", temperature=temperature)
+        if LLM_type == 'gpt-4.1-mini':
+            return LLM_Agent.rank_batteries_chatgpt(messages, model="gpt-4.1-mini", temperature=temperature)
         elif LLM_type == 'chatgpt_o1':
             return LLM_Agent.rank_batteries_chatgpt(messages, model="o1-mini", temperature=temperature)
         elif LLM_type == 'chatgpt_o3':
@@ -163,7 +163,7 @@ class LLM_Agent:
     def rank_batteries_chatgpt(messages, model, temperature):
         received = False
 
-        if model == "chatgpt_3.5":
+        if model == "gpt-4.1-mini":
             response = openai.ChatCompletion.create(
                 model=model,
                 messages=messages,
