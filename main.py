@@ -58,7 +58,7 @@ def show_content(content, color=default_color):
 def load_retrieval_DB():
     # 直接指定钠离子电池数据库文件路径
     # 请确保该路径正确
-    DBfile = 'data/Na_battery/preprocessed.csv'
+    DBfile = 'data/preprocessed.csv'
 
     DB = pd.read_csv(DBfile)
     DB = DB[['formula']]
