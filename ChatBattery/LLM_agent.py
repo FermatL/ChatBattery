@@ -1,6 +1,8 @@
 import sys
 import openai
 import time
+import google.generativeai as genai
+import os
 
 
 def parse(raw_text, history_battery_list):
@@ -49,6 +51,12 @@ class LLM_Agent:
             return LLM_Agent.optimize_batteries_chatgpt(messages, model="o3-mini", temperature=temperature)
         elif LLM_type == 'chatgpt_4o':
             return LLM_Agent.optimize_batteries_chatgpt(messages, model="gpt-4o-mini", temperature=temperature)
+        elif LLM_type == 'gemini_2.5_flash':
+            return LLM_Agent.optimize_batteries_gemini(messages, model="gemini-2.5-flash", temperature=temperature)
+        elif LLM_type == 'gemini_2.5_pro':
+            return LLM_Agent.optimize_batteries_gemini(messages, model="gemini-2.5-pro", temperature=temperature)
+        elif LLM_type == 'gemini_2.0_flash':
+            return LLM_Agent.optimize_batteries_gemini(messages, model="gemini-2.0-flash-exp", temperature=temperature)
         elif LLM_type == "llama2":
             return LLM_Agent.optimize_batteries_open_source(messages, loaded_model=loaded_model, loaded_tokenizer=loaded_tokenizer)
         elif LLM_type == "llama3":
@@ -156,6 +164,12 @@ class LLM_Agent:
             return LLM_Agent.rank_batteries_chatgpt(messages, model="o3-mini", temperature=temperature)
         elif LLM_type == 'chatgpt_4o':
             return LLM_Agent.rank_batteries_chatgpt(messages, model="gpt-4o-mini", temperature=temperature)
+        elif LLM_type == 'gemini_2.5_flash':
+            return LLM_Agent.rank_batteries_gemini(messages, model="gemini-2.5-flash", temperature=temperature)
+        elif LLM_type == 'gemini_2.5_pro':
+            return LLM_Agent.rank_batteries_gemini(messages, model="gemini-2.5-pro", temperature=temperature)
+        elif LLM_type == 'gemini_2.0_flash':
+            return LLM_Agent.rank_batteries_gemini(messages, model="gemini-2.0-flash-exp", temperature=temperature)
         else:
             raise NotImplementedError
 
@@ -177,5 +191,109 @@ class LLM_Agent:
                 temperature=temperature,
                 n=None)
         raw_generated_text = response["choices"][0]["message"]['content']
+
+        return raw_generated_text
+
+    @staticmethod
+    def optimize_batteries_gemini(messages, model, temperature):
+        # Configure Gemini API
+        gemini_api_key = os.getenv('GOOGLE_API_KEY')
+        if not gemini_api_key:
+            raise ValueError("GOOGLE_API_KEY environment variable not set")
+        
+        genai.configure(api_key=gemini_api_key)
+        
+        received = False
+        history_battery_list = []
+
+        while not received:
+            try:
+                # Create the Gemini model
+                gemini_model = genai.GenerativeModel(model)
+                
+                # Convert OpenAI-style messages to Gemini format
+                # For Gemini, we need to combine the messages into a single prompt
+                prompt_text = ""
+                for message in messages:
+                    role = message["role"]
+                    content = message["content"]
+                    if role == "system":
+                        prompt_text += f"System: {content}\n\n"
+                    elif role == "user":
+                        prompt_text += f"User: {content}\n\n"
+                    elif role == "assistant":
+                        prompt_text += f"Assistant: {content}\n\n"
+                
+                # Generate response
+                generation_config = genai.types.GenerationConfig(
+                    temperature=temperature,
+                    max_output_tokens=1000,
+                )
+                
+                response = gemini_model.generate_content(
+                    prompt_text,
+                    generation_config=generation_config
+                )
+                
+                raw_generated_text = response.text
+
+                # ignore batteries that have shown up before
+                generated_battery_list = parse(raw_generated_text, history_battery_list)
+
+                print("===== Parsing messages in the LLM agent =====")
+                print("raw_generated_text", raw_generated_text.replace("\n", "\t"))
+                print("generated_battery_list", generated_battery_list)
+                print("===== Done parsing. =====\n")
+
+                if len(generated_battery_list) == 0:
+                    raw_generated_battery_list = parse(raw_generated_text, [])
+                    print("raw_generated_battery_list", raw_generated_battery_list)
+                    messages[-1]["content"] += "Please do not generate batteries in this list {}.".format(raw_generated_battery_list)
+
+                assert len(generated_battery_list) > 0, "The generated batteries have been discussed in our previous rounds of discussion. Will retry."
+
+                received = True
+                    
+            except Exception as e:
+                print(e)
+                time.sleep(1)
+        return raw_generated_text, generated_battery_list
+
+    @staticmethod
+    def rank_batteries_gemini(messages, model, temperature):
+        # Configure Gemini API
+        gemini_api_key = os.getenv('GOOGLE_API_KEY')
+        if not gemini_api_key:
+            raise ValueError("GOOGLE_API_KEY environment variable not set")
+        
+        genai.configure(api_key=gemini_api_key)
+        
+        # Create the Gemini model
+        gemini_model = genai.GenerativeModel(model)
+        
+        # Convert OpenAI-style messages to Gemini format
+        prompt_text = ""
+        for message in messages:
+            role = message["role"]
+            content = message["content"]
+            if role == "system":
+                prompt_text += f"System: {content}\n\n"
+            elif role == "user":
+                prompt_text += f"User: {content}\n\n"
+            elif role == "assistant":
+                prompt_text += f"Assistant: {content}\n\n"
+        
+        # Generate response
+        generation_config = genai.types.GenerationConfig(
+            temperature=temperature,
+            max_output_tokens=500,
+        )
+        
+        response = gemini_model.generate_content(
+            prompt_text,
+            generation_config=generation_config
+        )
+        
+        raw_generated_text = response.text
 
         return raw_generated_text

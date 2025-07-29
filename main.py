@@ -159,6 +159,8 @@ def index():
 
             if args['LLM_type'] in ["chatgpt_3.5"]:
                 global_LLM_messages = [{"role": "system", "content": "You are an expert in the field of material and chemistry."}]
+            elif args['LLM_type'].startswith("gemini"):
+                global_LLM_messages = [{"role": "system", "content": "You are an expert in the field of material and chemistry."}]
             else:
                 global_LLM_messages = []
 
@@ -388,7 +390,7 @@ def index():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--task_index', required=False, type=int, default=101)
-    parser.add_argument('--LLM_type', required=False, type=str, default='chatgpt_3.5', choices=["chatgpt_3.5", "chatgpt_o1", "chatgpt_o3"], help='only support chatgpt now')
+    parser.add_argument('--LLM_type', required=False, type=str, default='gemini_2.5_flash', choices=["chatgpt_3.5", "chatgpt_o1", "chatgpt_o3", "gemini_2.5_flash", "gemini_2.5_pro", "gemini_2.0_flash"], help='LLM model to use - now supports both OpenAI and Google Gemini models')
     args = parser.parse_args()
     args = vars(args)
 

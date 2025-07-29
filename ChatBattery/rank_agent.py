@@ -43,6 +43,8 @@ class Rank_Agent:
 
             if args.LLM_type in ["chatgpt_3.5"]:
                 global_LLM_messages = [{"role": "system", "content": "You are an expert in the field of material and chemistry."}]
+            elif args.LLM_type.startswith("gemini"):
+                global_LLM_messages = [{"role": "system", "content": "You are an expert in the field of material and chemistry."}]
             else:
                 global_LLM_messages = []
             global_LLM_messages.append({"role": "user", "content": prompt})
