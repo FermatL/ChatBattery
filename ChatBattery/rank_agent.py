@@ -34,8 +34,9 @@ class Rank_Agent:
             total_formula_to_index[formula] = idx
 
         def compare_first_better_than_second(formula_01, formula_02):
+            # 更改: 将模板中的 "Li" 更改为 "Na"
             template = """
-        Could you compare the two Li cathode materials, {} and {}, and identify which one has a higher voltage vs. Li+/Li (V)?
+        Could you compare the two Na cathode materials, {} and {}, and identify which one has a higher voltage vs. Na+/Na (V)?
         List the better one in the last line, marked by '*'.
             """
             i, j = total_formula_to_index[formula_01], total_formula_to_index[formula_02]
