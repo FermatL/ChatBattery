@@ -55,11 +55,10 @@ def show_content(content, color=default_color):
     return
 
 
-def load_retrieval_DB(task_index):
-    if task_index == 101:
-        DBfile = 'data/Na_battery/preprocessed.csv'
-    else:
-        raise NotImplementedError
+def load_retrieval_DB():
+    # 直接指定钠离子电池数据库文件路径
+    # 请确保该路径正确
+    DBfile = 'data/Na_battery/preprocessed.csv'
 
     DB = pd.read_csv(DBfile)
     DB = DB[['formula']]
@@ -67,7 +66,7 @@ def load_retrieval_DB(task_index):
     return DB
 
 
-def problem_conceptualization(input_battery, condition, task_index):
+def problem_conceptualization(input_battery, condition):
     mode = condition[0]
 
     if mode == "initial":
@@ -188,7 +187,7 @@ def index():
                     content += "\n\n"
                     show_content(content)
 
-            prompt = problem_conceptualization(condition=condition, input_battery=input_battery, task_index=task_index)
+            prompt = problem_conceptualization(condition=condition, input_battery=input_battery)
             content = "[Human Agent]\n{}\n\n".format(prompt)
             show_content(content)
 
@@ -317,14 +316,14 @@ def index():
             input_battery = global_input_battery_list[-1]
             generated_battery_list = global_generated_battery_list[-1]
 
-            input_value = Domain_Agent.calculate_theoretical_capacity(input_battery, task_index)
+            input_value = Domain_Agent.calculate_theoretical_capacity(input_battery)
             content = "[Domain Agent] Input battery is {} with capacity {:.3f}".format(input_battery, input_value)
             show_content(content)
 
             content = "[Decision Agent]"
             show_content(content)
 
-            answer_list = Decision_Agent.decide_pairs(input_battery, generated_battery_list, task_index)
+            answer_list = Decision_Agent.decide_pairs(input_battery, generated_battery_list)
             for generated_battery, output_value, answer in answer_list:
                 if global_battery_record[generated_battery] == "not novel":
                     content = "* Candidate optimized battery {} is not novel".format(generated_battery)
@@ -346,7 +345,7 @@ def index():
                         global_battery_record[generated_battery] = "invalid"
 
                         try:
-                            retrieved_battery, retrieved_capacity = Retrieval_Agent.retrieve_with_domain_feedback(task_index, retrieval_DB, input_battery, generated_battery)
+                            retrieved_battery, retrieved_capacity = Retrieval_Agent.retrieve_with_domain_feedback(retrieval_DB, input_battery, generated_battery)
                             retrieved_content = "[Retrieval Agent] Retrieved battery {} <span style=\"color:{}\">with capacity {:.3f}</span> is the most similar to the candidate optimized battery and serves as a valid optimization to the input battery.".format(
                                 retrieved_battery, domain_agent_color, retrieved_capacity)
                         except:
@@ -387,13 +386,10 @@ def index():
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--task_index', required=False, type=int, default=101)
     parser.add_argument('--LLM_type', required=False, type=str, default='gpt-4.1-mini', choices=["gpt-4.1-mini", "chatgpt_o1", "chatgpt_o3"], help='only support chatgpt now')
     args = parser.parse_args()
     args = vars(args)
 
-    task_index = args['task_index']
-
-    retrieval_DB = load_retrieval_DB(task_index)
+    retrieval_DB = load_retrieval_DB()
 
     app.run(debug=True)
