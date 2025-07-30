@@ -2,7 +2,7 @@ import sys
 import openai
 import time
 openai.api_base = "https://models.inference.ai.azure.com/"
-openai.api_key = "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"
+openai.api_key = "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"
 
 def parse(raw_text, history_battery_list):
     record = []
